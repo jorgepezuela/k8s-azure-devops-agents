@@ -1,0 +1,195 @@
+FROM ubuntu:focal AS main
+
+LABEL maintainer="jorgepezuela"
+
+#########
+#DEFAULT#
+#########
+# To make it easier for build and release pipelines to run apt-get,
+# configure apt to not require confirmation (assume the -y argument by default)
+ENV DEBIAN_FRONTEND=noninteractive
+RUN echo "APT::Get::Assume-Yes \"true\";" > /etc/apt/apt.conf.d/90assumeyes
+
+# We don't need the standalone Chromium
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD true
+
+######
+#BASE#
+######
+# **********************************************
+# Set common components
+# **********************************************
+RUN apt-get update \
+  && apt-get install --no-install-recommends \
+  apt-utils \
+  build-essential \
+  curl \
+  ca-certificates \
+  gnupg \
+  git \
+  gpg \
+  jq \
+  libncurses5-dev \
+  libgdbm-dev \
+  libnss3-dev \
+  libssl-dev \
+  libreadline-dev \
+  libffi-dev \
+  libsqlite3-dev \
+  libbz2-dev \
+  make \
+  openjdk-17-jdk \
+  python-openssl \
+  software-properties-common \
+  unzip \
+  wget \
+  zlib1g-dev
+
+
+
+# **********************************************
+# Install libicu library
+# **********************************************
+RUN curl http://ftp.debian.org/debian/pool/main/i/icu/libicu63_63.1-6+deb10u3_amd64.deb \
+  --output libicu63_63.1-6+deb10u3_amd64.deb && dpkg -i libicu63_63.1-6+deb10u3_amd64.deb
+
+FROM main AS agent
+
+# **********************************************
+# Install azcli components
+# **********************************************
+RUN curl -LsS https://aka.ms/InstallAzureCLIDeb | bash \
+  && rm -rf /var/lib/apt/lists/*
+
+# **********************************************
+# Install Powershell and Kubectl
+# **********************************************
+RUN wget https://packages.microsoft.com/config/ubuntu/20.04/packages-microsoft-prod.deb -O packages-microsoft-prod.deb \
+    && dpkg -i packages-microsoft-prod.deb \
+    && rm packages-microsoft-prod.deb \
+    && apt-get update && export DEBIAN_FRONTEND=noninteractive
+
+RUN echo "deb [signed-by=/etc/apt/trusted.gpg.d/kubernetes-apt-keyring.gpg]  https://pkgs.k8s.io/core:/stable:/v1.28/deb/ /" | tee /etc/apt/sources.list.d/kubernetes.list \
+  && curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.28/deb/Release.key | gpg --dearmor -o /etc/apt/trusted.gpg.d/kubernetes-apt-keyring.gpg \
+  && apt-get update
+
+RUN apt-get install --no-install-recommends \
+  powershell kubectl \
+  && rm -rf /var/lib/apt/lists/*
+
+# **********************************************
+# Install kustomize
+# **********************************************
+RUN curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+RUN mv /kustomize /usr/local/bin/kustomize
+
+WORKDIR /azp
+
+# **********************************************
+# Install Python Versions
+# **********************************************
+ADD https://www.python.org/ftp/python/3.10.13/Python-3.10.13.tgz Python-3.10.13.tgz
+
+RUN bash -c 'mkdir -p /azp/_work/_tool/Python/3.10.13/{x64,x64.complete}'
+
+RUN tar xvzf Python-3.10.13.tgz
+RUN rm -f /azp/Python-3.10.13.tgz
+
+RUN cd /azp/Python-3.10.13 && ./configure --enable-optimizations && ./configure --prefix=/azp/_work/_tool/Python/3.10.13/x64/ && make && make install
+
+#Create a symlink from python to python3 as recomended in PEP394(https://peps.python.org/pep-0394/) to avoid issues when running python
+RUN ln -s /azp/_work/_tool/Python/3.10.13/x64/bin/python3.10 /azp/_work/_tool/Python/3.10.13/x64/bin/python & \
+  ln -s /azp/_work/_tool/Python/3.10.13/x64/bin/pip3 /azp/_work/_tool/Python/3.10.13/x64/bin/pip
+
+RUN rm -rf /azp/Python-3.10.13
+
+#######
+#FRONT#
+#######
+# **********************************************
+# SELECT TIMEZONE
+# **********************************************
+ENV TZ="Europe/Madrid"
+
+# **********************************************
+# Update time of s.o
+# **********************************************
+RUN apt-get update && \
+    apt install -y --no-install-recommends tzdata
+
+# **********************************************
+# Install node/npm
+# **********************************************
+RUN apt-get update \
+&& apt-get install ca-certificates curl gnupg \
+&& mkdir -p /etc/apt/keyrings \
+&& curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg \
+&& NODE_MAJOR=18 \
+# Node 18 is the latest compatible version with some angular libraries that front uses
+&& echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_$NODE_MAJOR.x nodistro main" | tee /etc/apt/sources.list.d/nodesource.list \
+&& apt-get update \
+&& apt-get install nodejs  \
+&& npm install -g @angular/cli@17.3.0 \
+# angular/cli 17.3.0 is the latest version compatible with node 18.16.0
+&& npm install -g npm@9.5.1 \
+# npx 9.5.1 is installed with npm 9.5.1 by default
+&& npm install -g react@17.0.2 \
+&& npm install -g @nrwl/cli@12.10.0 \
+# nwrwl 12.10.0 has some vulnerabilities, but the latest version (15.9.0) has some breaking changes
+&& npm install -g @commercetools-frontend/mc-scripts@23.2.2 \
+# commercetools-frontend/mc-scripts 23.2.2 has some vulnerabilities, but the latest version (24.0.0) has some breaking changes
+&& npm install -g yarn@1.22.19
+
+# # **********************************************
+# # Install PM2
+# # **********************************************
+RUN apt-get update \
+&& npm install pm2@latest -g
+
+# **********************************************
+# Install Chrome
+# **********************************************
+# Install Google Chrome Stable and fonts
+# Note: this installs the necessary libs to make the browser work with Puppeteer.
+RUN apt-get update && \
+  wget --quiet --output-document=- https://dl-ssl.google.com/linux/linux_signing_key.pub | gpg --dearmor > /etc/apt/trusted.gpg.d/google-archive.gpg && \
+  sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list' && \
+  apt-get update && \
+  apt-get install google-chrome-stable  --no-install-recommends && \
+  rm -rf /var/lib/apt/lists/* && \
+  apt-get clean
+
+##############
+#AGENT & USER#
+##############
+# **********************************************
+# Add AzureDevops Scripts
+# **********************************************
+ADD start.sh /start.sh
+RUN chmod +x /start.sh
+
+ADD stop.sh /stop.sh
+RUN chmod +x /stop.sh
+
+# **********************************************
+# Create user noroot
+# **********************************************
+RUN groupadd -g 1001 azp && \
+  useradd -r -u 1001 -g azp -d /azp azp
+
+RUN chown -R azp:azp /azp
+
+USER azp
+
+
+# **********************************************
+# Install azpwsh components
+# **********************************************
+
+RUN pwsh -Command Install-Module -Name Az.Accounts, Az.ApiManagement -Repository PSGallery -Scope CurrentUser -Force
+
+
+# **********************************************
+# Entrypoint
+# **********************************************
+ENTRYPOINT ["/start.sh"]

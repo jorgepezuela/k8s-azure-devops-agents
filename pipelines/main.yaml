@@ -1,0 +1,78 @@
+name: $(BuildDefinitionName)-$(Build.SourceBranchName)-$(Date:yyyyMMdd.HHmmss)
+trigger:
+  batch: true
+  branches:
+    include:
+    - main
+  paths:
+    include:
+    - image
+    exclude:
+    - agents
+    - pipeline
+    - util
+
+pool: Linux-Self-Hosted-SRE-WE
+
+variables:
+- name: registry
+  value: myacr
+- name: serviceprincipal
+  value: #myazuresubscription
+- name: imagename
+  value: azure/devops-agent
+- name: builddate
+  value: $[format('{0:yyyy}{0:MM}{0:dd}', pipeline.startTime)]
+- name: revision
+  value: $[counter(format('{0:yyyyMMdd}', pipeline.startTime), 0)]
+
+parameters:
+- name: platform
+  type: string
+  default: linux
+  displayName: Platform to build
+  values:
+  - linux
+  - windows
+- name: agentpool
+  type: string
+  default: back
+  displayName: Agentpool to build
+  values:
+  - sre
+  - back
+  - front
+  - linuxk8s
+  - backws
+  - data
+  - dataws
+  - vip
+
+- name: environment
+  type: string
+  default: default
+  displayName: Environment to build
+  values:
+  - default
+  - dev
+  - stg
+  - prd
+
+stages:
+- stage: BuildImageAndPushToACR
+  jobs:
+  - job: Build_template
+    timeoutInMinutes: 500
+    steps:
+    - checkout: self
+      persistCredentials: true
+      clean: true
+    - template: /pipelines/templates/buildimage.yml
+      parameters:
+        registry: ${{ variables.registry }}
+        serviceprincipal: ${{ variables.serviceprincipal }}
+        imagename: ${{ variables.imagename }}-${{ parameters.agentpool }}
+        revision: $(builddate)$(revision)
+        platform: ${{parameters.platform}}
+        agentpool: ${{parameters.agentpool}}
+        environment: ${{parameters.environment}}

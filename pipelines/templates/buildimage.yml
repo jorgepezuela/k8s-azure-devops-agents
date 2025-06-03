@@ -1,0 +1,56 @@
+parameters:
+  - name: serviceprincipal
+    type: string
+  - name: registry
+    type: string
+  - name: imagename
+    type: string
+  - name: revision
+    type: string
+  - name: platform
+    type: string
+  - name: agentpool
+    type: string
+  - name: environment
+    type: string
+
+steps:
+  # - task: UsePythonVersion@0
+  #   inputs:
+  #     versionSpec: '3.10'
+  #     addToPath: true
+
+  - task: AzureCLI@2
+    displayName: Build and push an image to container registry
+    inputs:
+      azureSubscription: ${{ parameters.serviceprincipal }}
+      scriptType: pscore
+      scriptLocation: inlineScript
+      failOnStandardError: false
+      inlineScript: |
+        echo ${{ parameters.revision }}
+        az acr build --image ${{ parameters.imagename }}:${{ parameters.revision }} --platform ${{ parameters.platform }} --file image/Dockerfile.${{ parameters.agentpool }} --registry ${{ parameters.registry }} ./image/
+
+  - task: AzureCLI@2
+    displayName: Retag the image to latest
+    inputs:
+      azureSubscription: ${{ parameters.serviceprincipal }}
+      scriptType: pscore
+      scriptLocation: inlineScript
+      failOnStandardError: false
+      inlineScript: |
+        echo ${{ parameters.revision }}
+        az acr import --name ${{ parameters.registry }} --source ${{ parameters.registry }}.azurecr.io/${{ parameters.imagename }}:${{ parameters.revision }} --image ${{ parameters.imagename }}:latest --force
+
+  - task: Bash@3
+    displayName: Change Image with Kustomize
+    inputs:
+      targetType: 'inline'
+      script: |
+        cd agents/${{ parameters.platform }}/${{parameters.agentpool}}/overlays/${{ parameters.environment }}
+        kustomize edit set image agent=${{ parameters.registry }}.azurecr.io/${{ parameters.imagename }}:${{ parameters.revision }}
+        git config --global user.email "none@example.com" && git config --global user.name "Pipeline"
+        cat kustomization.yaml
+        git add kustomization.yaml
+        git commit -am "Change Build Image to ${{ parameters.revision }}"
+        git push origin HEAD:main

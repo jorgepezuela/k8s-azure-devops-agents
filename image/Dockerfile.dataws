@@ -1,0 +1,173 @@
+FROM mcr.microsoft.com/windows/servercore:ltsc2022
+
+SHELL ["powershell", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
+
+# **********************************************
+# Install PowerShell 7
+# **********************************************
+
+RUN Invoke-WebRequest -Uri "https://github.com/PowerShell/PowerShell/releases/download/v7.4.1/PowerShell-7.4.1-win-x64.msi" -OutFile "C:\Users\ContainerAdministrator\AppData\Local\Temp\PowerShell.msi" -UseBasicParsing ; \
+    msiexec.exe /package C:\Users\ContainerAdministrator\AppData\Local\Temp\PowerShell.msi /quiet ADD_EXPLORER_CONTEXT_MENU_OPENPOWERSHELL=1 ADD_FILE_CONTEXT_MENU_RUNPOWERSHELL=1 ENABLE_PSREMOTING=1 REGISTER_MANIFEST=1 USE_MU=1 ENABLE_MU=1 ADD_PATH=1; \
+	Remove-Item -Path 'C:\Users\ContainerAdministrator\AppData\Local\Temp\PowerShell.msi' -Force
+
+# **********************************************
+# Instalación de Git
+# **********************************************
+
+RUN Invoke-WebRequest -Uri 'https://github.com/git-for-windows/git/releases/download/v2.35.1.windows.1/Git-2.35.1-64-bit.exe' -OutFile 'C:\Users\ContainerAdministrator\AppData\Local\Temp\git-installer.exe' -UseBasicParsing ; \
+    Start-Process -FilePath 'C:\Users\ContainerAdministrator\AppData\Local\Temp\git-installer.exe' -ArgumentList '/VERYSILENT /NORESTART /NOCANCEL /SP-' -Wait ; \
+    Remove-Item -Path 'C:\Users\ContainerAdministrator\AppData\Local\Temp\git-installer.exe' -Force
+
+# **********************************************
+# Install Az cli
+# **********************************************
+
+RUN Invoke-WebRequest -Uri 'https://aka.ms/installazurecliwindows' -OutFile .\AzureCLI.msi; \
+    Start-Process msiexec.exe -Wait -ArgumentList '/I AzureCLI.msi /quiet'; \
+    Remove-Item .\AzureCLI.msi
+
+# **********************************************
+# Install choco
+# **********************************************
+
+RUN Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+# Allow installing without asking:
+RUN choco feature enable -n allowGlobalConfirmation
+
+# **********************************************
+# Install choco Componets
+# **********************************************
+
+# Microsoft Edge
+RUN choco install microsoft-edge -y
+
+# #Python 3 https://community.chocolatey.org/packages/python37
+
+RUN choco install python37; \
+    Copy-Item C:\Python37\python.exe C:\Python37\python3.exe; \
+    $Env:PATH = $Env:PATH + ';C:\Python37'; \
+    [Environment]::SetEnvironmentVariable('PATH', "$Env:PATH", [EnvironmentVariableTarget]::Machine)
+
+# **********************************************
+# Install Visual C++ 2022
+# **********************************************
+
+RUN [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; \
+	Invoke-WebRequest "https://aka.ms/vs/17/release/vc_redist.x64.exe" -OutFile "C:\Users\ContainerAdministrator\AppData\Local\Temp\vc_redist.x64.exe"; \
+	Start-Process -filepath C:\Users\ContainerAdministrator\AppData\Local\Temp\vc_redist.x64.exe -ArgumentList "/install", "/passive", "/norestart" -Passthru | Wait-Process; \
+	Remove-Item -Path 'C:\Users\ContainerAdministrator\AppData\Local\Temp\vc_redist.x64.exe'-Force
+
+# **********************************************
+# Install Visual Studio Tools
+# **********************************************
+
+# Download the Build Tools bootstrapper.
+RUN Invoke-WebRequest -Uri "https://aka.ms/vs/17/release/vs_buildtools.exe" -OutFile 'C:\Users\ContainerAdministrator\AppData\Local\Temp\vs_buildtools.exe'; \
+# Install Build Tools excluding workloads and components with known issues.
+    Start-Process -FilePath 'C:\Users\ContainerAdministrator\AppData\Local\Temp\vs_buildtools.exe' -ArgumentList '--quiet', '--norestart', '--nocache', \
+    '--add Microsoft.VisualStudio.Workload.AzureBuildTools', \
+    '--add Microsoft.NetCore.Component.SDK', \
+    # install de .Net SDK version compatible with the build tools
+    '--add Microsoft.VisualStudio.Component.SQL.SSDTBuildSku', \
+    # install the SQL Server Data Tools - Build Tools
+    '--remove Microsoft.VisualStudio.Component.Windows10SDK.10240', \
+    '--remove Microsoft.VisualStudio.Component.Windows10SDK.10586', \
+    '--remove Microsoft.VisualStudio.Component.Windows10SDK.14393', \
+    '--remove Microsoft.VisualStudio.Component.Windows81SDK' -NoNewWindow -Wait; \
+    Remove-Item -Path 'C:\Users\ContainerAdministrator\AppData\Local\Temp\vs_buildtools.exe' -Force
+
+# **********************************************
+# Install Azure SQL Package
+# **********************************************
+
+# # This installation is following the Cross platform installation in the documentation https://learn.microsoft.com/en-us/sql/tools/sqlpackage/sqlpackage-download?view=sql-server-ver16
+# # With the following installation that requires .NET SDK installed, we will install Azure sqlpackage and will be available in the path as sql package.
+
+# RUN dotnet tool install -g microsoft.sqlpackage; \
+# # This adds the DackFx NuGet package 
+#     dotnet add package Microsoft.SqlServer.DacFx
+
+
+# # This installation is made using the Microsoft Documentation Windows (.NET 8) https://learn.microsoft.com/en-us/sql/tools/sqlpackage/sqlpackage-download?view=sql-server-ver16
+# # First we download the package that includes the sqlpackage
+# RUN Invoke-WebRequest -Uri 'https://aka.ms/sqlpackage-windows' -OutFile 'C:\Users\ContainerAdministrator\AppData\Local\Temp\sqlpackage-windows.zip'; \
+# # Second we create the sqlpackage directory
+#     New-Item -ItemType "directory" -Path 'C:\Program Files\sqlpackage'; \
+# # Third we extract the zip that has been downloaded in the folder that we have created before
+#     Expand-Archive 'C:\Users\ContainerAdministrator\AppData\Local\Temp\sqlpackage-windows.zip' 'C:\Program Files\sqlpackage'; \
+# # Fourth we add the sqlpackage to the environment variable PATH
+#     $Env:PATH = 'C:\Program Files\sqlpackage;' + $Env:PATH; \
+#     [Environment]::SetEnvironmentVariable('PATH', "$Env:PATH", [EnvironmentVariableTarget]::Machine); \
+# # Finally we remove the zip that we have downloaded
+#     Remove-Item -Path 'C:\Users\ContainerAdministrator\AppData\Local\Temp\sqlpackage-windows.zip' -Force
+
+
+# # This installation is made using the Microsoft Documentation Alternative installation File https://learn.microsoft.com/en-us/sql/tools/sqlpackage/sqlpackage-download?view=sql-server-ver16
+# # This installation is made because the other alternatives cannot be found in the system capabilities
+# # First we download the msi installer
+# RUN Invoke-WebRequest -Uri 'https://go.microsoft.com/fwlink/?linkid=2286487' -OutFile 'C:\Users\ContainerAdministrator\AppData\Local\Temp\sqlpackage-windows.msi'; \
+# # Second we install the sqlpackage
+#     Start-Process -FilePath 'C:\Users\ContainerAdministrator\AppData\Local\Temp\sqlpackage-windows.msi' -ArgumentList '--quiet', '--norestart', '--nocache'; \
+# # Third we remove the msi installer that we downloaded
+#     Remove-Item -Path 'C:\Users\ContainerAdministrator\AppData\Local\Temp\sqlpackage-windows.msi' -Force; \
+# # Fourth
+
+
+# This installation of dacfx is made using the url of automated environments https://learn.microsoft.com/en-us/sql/tools/sqlpackage/sqlpackage-download?view=sql-server-ver16
+# The System parameter SqlPackageExecutable is used by the agent and contains the local path of the SQL Package executable (SQLPackage.exe), also called DACFRAMEWORK and/or DACPAC, for the currently installed version of Microsoft SQL Server.
+# First we download the msi installer
+RUN Invoke-WebRequest -Uri 'https://aka.ms/dacfx-msi' -OutFile 'C:\Users\ContainerAdministrator\AppData\Local\Temp\dacfx.msi'
+# Second we install the dackfx
+RUN Start-Process -FilePath 'C:\Users\ContainerAdministrator\AppData\Local\Temp\dacfx.msi'; \
+# Third we add the dacfx to the PATH environment variable
+    $Env:PATH = 'C:\Program Files\Microsoft SQL Server\160\DAC\bin;' + $Env:PATH; \
+    [Environment]::SetEnvironmentVariable('PATH', "$Env:PATH", [EnvironmentVariableTarget]::Machine)
+
+# **********************************************
+# Install JQ
+# **********************************************
+
+RUN choco install jq; \
+    $Env:PATH = $Env:PATH + ';C:\ProgramData\chocolatey\lib\jq\tools\jq.exe'; \
+    [Environment]::SetEnvironmentVariable('PATH', "$Env:PATH", [EnvironmentVariableTarget]::Machine); \
+    jq --help
+
+# **********************************************
+# Install Azure for Powershell Accounts Module
+# **********************************************
+
+## This is for Workload Identity
+RUN Install-PackageProvider -Name NuGet -Force
+RUN Install-Module -Name Az.Accounts, Az.DataFactory -Scope CurrentUser -Force -Confirm:$false
+RUN Import-Module Az.Accounts, Az.DataFactory
+
+# **********************************************
+# Descargar e instalar Microsoft Edge WebView2 Runtime
+# **********************************************
+
+RUN Invoke-WebRequest -Uri 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' -OutFile 'WebView2Runtime.exe' -UseBasicParsing ; \
+    Start-Process -FilePath 'WebView2Runtime.exe' -ArgumentList '/silent /install' -Wait ; \
+    Remove-Item -Path 'WebView2Runtime.exe' -Force
+
+
+# **********************************************
+# Install Microsoft System CLR Types for SQL Server 2019
+# **********************************************
+RUN Invoke-WebRequest -Uri 'https://download.microsoft.com/download/4/3/2/4320347c-cd8d-4caf-bc5f-07de366076fd/SQLSysClrTypes.msi' -OutFile "C:\Users\ContainerAdministrator\AppData\Local\Temp\SQLSysClrTypes.msi" -UseBasicParsing; \
+    msiexec /i "C:\Users\ContainerAdministrator\AppData\Local\Temp\SQLSysClrTypes.msi" /quiet /norestart
+
+# **********************************************
+# Azure Devops Agents
+# **********************************************
+
+WORKDIR /azp
+COPY start-data.ps1 .
+COPY stop.ps1 .
+
+CMD ["powershell", ".\\start-data.ps1"]
+
+# Define the entry point for the docker container.
+# This entry point starts the developer command prompt and launches the PowerShell shell.
+# SHELL ["powershell", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
+# ENTRYPOINT ["powershell.exe", "-NoLogo", "-ExecutionPolicy", "Bypass"]
+# ENTRYPOINT ["powershell", ".\\start.ps1"]
