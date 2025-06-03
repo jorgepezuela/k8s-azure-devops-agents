@@ -1,6 +1,6 @@
-# Azure DevOps Agents on Kubernetes
+# Azure DevOps Agents on Azure Kubernetes Services (AKS)
 
-This repository contains all the necessary files and configurations to deploy Azure DevOps agents on Kubernetes clusters. The solution supports both Linux and Windows agents, with various specialized configurations for different types of workloads.
+This repository contains all the necessary files and configurations to deploy Azure DevOps agents on Azure Kubernetes Services (AKS). The solution supports both Linux and Windows agents, with various specialized configurations for different types of workloads.
 
 ## Repository Structure
 
