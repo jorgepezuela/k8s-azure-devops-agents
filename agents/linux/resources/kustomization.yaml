@@ -1,0 +1,22 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: azuredevops-linux
+
+resources:
+- ../../resources
+
+patches:
+  - target:
+      kind: Deployment
+      name: azuredevops-deployment
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/lifecycle
+        value:
+          preStop:
+            exec:
+              command: ["/bin/bash", "/stop.sh"]
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/memory
+        value: "14336Mi"

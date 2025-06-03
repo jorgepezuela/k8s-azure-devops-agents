@@ -1,0 +1,81 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+- ../../../resources
+
+patches:
+- patch: |-
+    - op: replace
+      path: /metadata/name
+      value: azuredevops-back-dev-we
+    - op: replace
+      path: /data/AZP_POOL
+      value: Linux-Self-Hosted-Back-DEV-WE
+  target:
+    kind: ConfigMap
+    name: azuredevops
+- patch: |-
+    - op: replace
+      path: /metadata/name
+      value: agentcleaner-back-dev-we
+  target:
+    kind: CronJob
+    name: agentcleaner
+- patch: |-
+    - op: replace
+      path: /metadata/name
+      value: azuredevops-deployment-back-dev-we
+    - op: replace
+      path: /spec/selector/matchLabels/app.kubernetes.io~1name
+      value: azuredevops-back-dev-we
+    - op: replace
+      path: /spec/template/metadata/labels/app.kubernetes.io~1name
+      value: azuredevops-back-dev-we
+    - op: replace
+      path: /spec/template/spec/volumes/0/csi/volumeAttributes/secretProviderClass
+      value: azuredevops-token-back-dev-we
+    - op: add
+      path: /spec/template/metadata/labels/azure.workload.identity~1use
+      value:  "true"
+    - op: add
+      path: /spec/template/spec/serviceAccountName
+      value: wi-agents-azdevops-sa-dev
+  target:
+    kind: Deployment
+    name: azuredevops-deployment
+- patch: |-
+    - op: replace
+      path: /metadata/name
+      value: pipeline-trigger-auth-back-dev-we
+  target:
+    kind: TriggerAuthentication
+    name: pipeline-trigger-auth
+- patch: |-
+    - op: replace
+      path: /metadata/name
+      value: azure-pipelines-scaledobject-back-dev-we
+    - op: replace
+      path: /spec/scaleTargetRef/name
+      value: azuredevops-deployment-back-dev-we
+    - op: replace
+      path: /spec/triggers/0/metadata/poolName
+      value: Linux-Self-Hosted-Back-DEV-WE
+    - op: replace
+      path: /spec/triggers/0/authenticationRef/name
+      value: pipeline-trigger-auth-back-dev-we
+  target:
+    kind: ScaledObject
+    name: azure-pipelines-scaledobject
+- patch: |-
+    - op: replace
+      path: /metadata/name
+      value: azuredevops-token-back-dev-we
+  target:
+    kind: SecretProviderClass
+    name: azuredevops-token
+
+images:
+- name: agent
+  newName: myacr.azurecr.io/azure/devops-agent-back
+  newTag: "202407250"

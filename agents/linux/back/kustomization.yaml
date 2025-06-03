@@ -1,0 +1,5 @@
+resources:
+  - overlays/default
+  - overlays/prd
+  - overlays/stg
+  - overlays/dev

@@ -1,0 +1,12 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: azuredevops
+
+resources:
+- configmap.yaml
+- cronjob.yaml
+- deployment.yaml
+- keda.yaml
+# - namespace.yaml (Not required it is use ApplicationSet with option syncOptions: - CreateNamespace=true)
+- secrets.yaml

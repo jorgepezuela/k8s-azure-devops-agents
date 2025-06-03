@@ -1,0 +1,36 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: azuredevops-windows
+
+resources:
+- ../../resources
+
+patches:
+  - target:
+      kind: Deployment
+      name: azuredevops-deployment
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/nodeSelector
+        value:
+          agentpool: wspool
+      - op: add
+        path: /spec/template/spec/tolerations
+        value:
+          - effect: NoSchedule
+            key: WindowsOnly
+            operator: Equal
+            value: "true"
+      - op: add
+        path: /spec/template/spec/containers/0/lifecycle
+        value:
+          preStop:
+            exec:
+              command: ["powershell",". c:/azp/stop.ps1"]
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/cpu
+        value: "1.5"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/memory
+        value: "6144Mi"

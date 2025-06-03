@@ -1,0 +1,32 @@
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: agentcleaner
+  namespace: azuredevops
+spec:
+  schedule: "0 * * * *"
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: agentcleaner
+            image: myacr.azurecr.io/azure/devops-agent-cleaner:latest
+            env:
+              - name: AZP_TOKEN
+                valueFrom:
+                  secretKeyRef:
+                    name: azuredevops
+                    key: AZP_TOKEN
+              - name: AZP_POOL
+                valueFrom:
+                  configMapKeyRef:
+                    name: azuredevops
+                    key: AZP_POOL
+          restartPolicy: Never
+          nodeSelector:
+            kubernetes.io/os: linux
+      backoffLimit: 2
